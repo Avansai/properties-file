@@ -1,7 +1,13 @@
 import { escapeKey, escapeValue } from '../escape'
 import { Properties } from '../parser/properties'
 
-import type { BlankLineNode, CommentNode, PropertiesNode, PropertyNode } from '../parser/nodes'
+import type {
+  BlankLineNode,
+  CommentNode,
+  KeyValuePairObject,
+  PropertiesNode,
+  PropertyNode,
+} from '../parser/nodes'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -27,12 +33,12 @@ export type KeyValuePairSeparator = '=' | ':' | ' '
 export type CommentDelimiter = '#' | '!'
 
 /** Options for {@link PropertiesEditor.insert}. */
-export type InsertOptions = {
+export type InsertOptions<K extends string = string> = {
   /**
    * Insert relative to this key (last occurrence). If the key is not found,
    * the property is appended at the end.
    */
-  referenceKey?: string
+  referenceKey?: K
   /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
   /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
@@ -50,12 +56,12 @@ export type InsertOptions = {
 }
 
 /** Options for {@link PropertiesEditor.insertComment}. */
-export type InsertCommentOptions = {
+export type InsertCommentOptions<K extends string = string> = {
   /**
    * Insert relative to this key (last occurrence). If the key is not found,
    * the comment is appended at the end.
    */
-  referenceKey?: string
+  referenceKey?: K
   /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
   /** Delimiter character for the comment. Default: `'#'`. */
@@ -63,22 +69,22 @@ export type InsertCommentOptions = {
 }
 
 /** Options for {@link PropertiesEditor.insertBlankLine}. */
-export type InsertBlankLineOptions = {
+export type InsertBlankLineOptions<K extends string = string> = {
   /**
    * Insert relative to this key (last occurrence). If the key is not found,
    * the blank line is appended at the end.
    */
-  referenceKey?: string
+  referenceKey?: K
   /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
 }
 
 /** Options for {@link PropertiesEditor.update}. */
-export type UpdateOptions = {
+export type UpdateOptions<K extends string = string> = {
   /** Replacement value. When not set, the original value is preserved. */
   newValue?: string
   /** Replacement key (rename). When not set, the original key is preserved. */
-  newKey?: string
+  newKey?: K
   /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
   escapeUnicode?: boolean
   /** New separator character. When not set, the original separator is preserved. */
@@ -278,7 +284,10 @@ const recalculateLineNumbers = (nodes: PropertiesNode[]): void => {
  * An editor for `.properties` files that extends the lossless {@link Properties}
  * parser with insert, update, delete, and upsert operations.
  */
-export class PropertiesEditor extends Properties {
+export class PropertiesEditor<
+  T extends KeyValuePairObject = KeyValuePairObject,
+  K extends Exclude<keyof T, number | symbol> = Exclude<keyof T, number | symbol>,
+> extends Properties<T, K> {
   /**
    * Find the first property node with the given key.
    *
@@ -286,7 +295,7 @@ export class PropertiesEditor extends Properties {
    *
    * @returns The matching node and its index in `this.nodes`, or `undefined`.
    */
-  private findFirstProperty(key: string): { index: number; node: PropertyNode } | undefined {
+  private findFirstProperty(key: K): { index: number; node: PropertyNode } | undefined {
     for (let index = 0; index < this.nodes.length; index++) {
       const node = this.nodes[index]
       if (node.type === 'property' && node.key === key) {
@@ -303,7 +312,7 @@ export class PropertiesEditor extends Properties {
    *
    * @returns The matching node and its index in `this.nodes`, or `undefined`.
    */
-  private findLastProperty(key: string): { index: number; node: PropertyNode } | undefined {
+  private findLastProperty(key: K): { index: number; node: PropertyNode } | undefined {
     for (let index = this.nodes.length - 1; index >= 0; index--) {
       const node = this.nodes[index]
       if (node.type === 'property' && node.key === key) {
@@ -320,7 +329,7 @@ export class PropertiesEditor extends Properties {
    * @param value - The unescaped value.
    * @param options - Insert options.
    */
-  insert(key: string, value: string, options?: InsertOptions): void {
+  insert(key: K, value: string, options?: InsertOptions<K>): void {
     const newNodes: PropertiesNode[] = []
 
     // Build comment nodes if requested.
@@ -364,7 +373,7 @@ export class PropertiesEditor extends Properties {
    * @param comment - The comment text (may contain newlines).
    * @param options - Insert comment options.
    */
-  insertComment(comment: string, options?: InsertCommentOptions): void {
+  insertComment(comment: string, options?: InsertCommentOptions<K>): void {
     const delimiter = options?.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
     const newNodes = buildCommentNodes(comment, delimiter, 0)
 
@@ -387,7 +396,7 @@ export class PropertiesEditor extends Properties {
    *
    * @param options - Insert blank line options.
    */
-  insertBlankLine(options?: InsertBlankLineOptions): void {
+  insertBlankLine(options?: InsertBlankLineOptions<K>): void {
     const blankNode: BlankLineNode = {
       type: 'blank',
       rawLine: '',
@@ -416,7 +425,7 @@ export class PropertiesEditor extends Properties {
    *
    * @returns `true` if the property was found and updated, `false` otherwise.
    */
-  update(key: string, options: UpdateOptions): boolean {
+  update(key: K, options: UpdateOptions<K>): boolean {
     const found = this.findLastProperty(key)
     if (found === undefined) {
       return false
@@ -513,7 +522,7 @@ export class PropertiesEditor extends Properties {
    * @param value - The unescaped value.
    * @param options - Upsert options.
    */
-  upsert(key: string, value: string, options?: UpsertOptions): void {
+  upsert(key: K, value: string, options?: UpsertOptions): void {
     if (this.findLastProperty(key) !== undefined) {
       this.update(key, {
         newValue: value,
@@ -539,7 +548,7 @@ export class PropertiesEditor extends Properties {
    *
    * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */
-  delete(key: string, options?: DeleteOptions): PropertyNode | undefined {
+  delete(key: K, options?: DeleteOptions): PropertyNode | undefined {
     const found =
       options?.occurrence === 'first' ? this.findFirstProperty(key) : this.findLastProperty(key)
     if (found === undefined) {
