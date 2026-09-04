@@ -399,6 +399,9 @@ export default defineConfig(
        * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2285
        */
       'unicorn/number-literal-case': 'off',
+      // Block comments whose content fits on one line stay on one line.
+      // @see https://github.com/sindresorhus/eslint-plugin-unicorn/blob/main/docs/rules/single-line-block-comment-style.md
+      'unicorn/single-line-block-comment-style': ['error', 'single-line'],
       // Disable modern API rules for backward compatibility (see UNICORN_MODERN_API_RULES).
       ...setRules(UNICORN_MODERN_API_RULES, 'off'),
       // Disable typescript-eslint stylistic rules that suggest ES2015+ runtime APIs

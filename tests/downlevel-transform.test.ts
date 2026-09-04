@@ -798,7 +798,7 @@ type ThresholdHolder = {
  * @returns `true` if the element is a number greater than the bound `this.threshold`.
  */
 function isBiggerThanThisThreshold(this: ThresholdHolder, value: unknown): boolean {
-  return typeof value === 'number' && value > this.threshold // eslint-disable-line unicorn/no-this-outside-of-class
+  return typeof value === 'number' && value > this.threshold
 }
 
 const isRepeatHelper = functionGuard<(s: string, count: number) => string>()
