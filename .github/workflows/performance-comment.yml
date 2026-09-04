@@ -1,0 +1,71 @@
+name: Performance report
+
+# Posts the report measured by the Performance workflow as a PR comment. `workflow_run` jobs run
+# from the workflow definition on the default branch, in the base repository's context, with a
+# write-capable token even when the measured PR comes from a fork. This job never checks out or
+# executes PR code: the only untrusted input is the report markdown, which is handed to `gh` as a
+# file and never interpolated into a command line.
+on:
+  workflow_run:
+    workflows: ['Performance']
+    types: [completed]
+
+jobs:
+  comment:
+    name: Post results to PR
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - name: Download report
+        run: gh run download "$RUN_ID" --repo "$REPOSITORY" --name performance-report --dir report
+
+      # Resolved from the measured branch and commit rather than read from the artifact, so a PR
+      # cannot redirect its report onto another PR. `workflow_run.pull_requests` is empty for
+      # forks, hence the explicit lookup. A branch that moved on since the measurement yields no
+      # match: the newer run reports instead.
+      - name: Find the pull request for the measured commit
+        id: pr
+        run: |
+          number=$(gh api "repos/$REPOSITORY/pulls?state=open&head=$HEAD_OWNER:$HEAD_BRANCH" \
+            --jq '[.[] | select(.head.sha == env.HEAD_SHA)][0].number // empty')
+          if [ -z "$number" ]; then
+            echo "No open pull request at $HEAD_OWNER:$HEAD_BRANCH@$HEAD_SHA; nothing to post."
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      # The hidden marker identifies the report comment for deletion on the next run. The
+      # measured-commit line pins the numbers to a commit — the comment's own timestamp says
+      # when, the SHA says what. Delete the previous report comment and post a fresh one: the
+      # comment then carries a native, current timestamp and sits at the bottom of the PR
+      # timeline, instead of an edited-in-place comment that GitHub keeps displaying with its
+      # original creation time.
+      - name: Post results to PR
+        if: steps.pr.outputs.number != ''
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          {
+            echo '<!-- performance-report -->'
+            echo "> Measured at commit $HEAD_SHA."
+            echo ''
+            cat report/report.md
+          } > pr-comment.md
+          # The startswith clause also matches report comments from before the hidden marker.
+          previous_comment_ids=$(gh api --paginate \
+            "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select((.body | contains("<!-- performance-report -->")) or (.body | startswith("> Measured at commit"))) | .id')
+          for comment_id in $previous_comment_ids; do
+            gh api -X DELETE "repos/$REPOSITORY/issues/comments/${comment_id}"
+          done
+          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body-file pr-comment.md

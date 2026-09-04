@@ -10,6 +10,11 @@ concurrency:
   group: performance-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# This workflow only measures. Posting the report to the PR happens in performance-comment.yml,
+# triggered by `workflow_run`: `pull_request` runs from forks get a read-only token no matter what
+# permissions are declared here, so a comment step in this workflow fails on every external PR.
+# Keeping the write-capable step in a separate workflow also means untrusted PR code never runs
+# with a write token (which `pull_request_target` would grant).
 jobs:
   benchmark:
     name: Performance comparison
@@ -17,7 +22,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
@@ -42,32 +46,22 @@ jobs:
       - name: Run size comparison
         run: npx tsx performance/size/compare.ts
 
-      # The hidden marker identifies the report comment for deletion on the next run. The
-      # measured-commit line pins the numbers to a commit — the comment's own timestamp says
-      # when, the SHA says what.
       - name: Combine reports
         run: >-
-          echo "<!-- performance-report -->" > performance/benchmarks/.results/pr-comment.md &&
-          echo "> Measured at commit ${{ github.event.pull_request.head.sha }}." >> performance/benchmarks/.results/pr-comment.md &&
-          echo "" >> performance/benchmarks/.results/pr-comment.md &&
-          cat performance/benchmarks/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md &&
-          echo -e "\n\n---\n" >> performance/benchmarks/.results/pr-comment.md &&
-          cat performance/size/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md
+          mkdir -p performance/.report &&
+          cat performance/benchmarks/.results/comparison.md > performance/.report/report.md &&
+          printf '\n\n---\n\n' >> performance/.report/report.md &&
+          cat performance/size/.results/comparison.md >> performance/.report/report.md
 
-      # Delete the previous report comment and post a fresh one: the comment then carries a
-      # native, current timestamp and sits at the bottom of the PR timeline, instead of an
-      # edited-in-place comment that GitHub keeps displaying with its original creation time.
-      - name: Post results to PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # The startswith clause also matches report comments from before the hidden marker.
-          previous_comment_ids=$(gh api --paginate \
-            "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-            --jq '.[] | select((.body | contains("<!-- performance-report -->")) or (.body | startswith("> Measured at commit"))) | .id')
-          for comment_id in $previous_comment_ids; do
-            gh api -X DELETE "repos/${{ github.repository }}/issues/comments/${comment_id}"
-          done
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --body-file performance/benchmarks/.results/pr-comment.md
+      # The job summary keeps the numbers visible on the run itself, independently of the comment.
+      - name: Publish job summary
+        run: cat performance/.report/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # The comment workflow resolves the PR from this run's head SHA, so the artifact carries the
+      # report body only.
+      - name: Upload report for the comment workflow
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-report
+          path: performance/.report/report.md
+          retention-days: 7
