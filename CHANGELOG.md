@@ -1,5 +1,7 @@
 # Changelog
 
+## [5.0.7](https://github.com/properties-file/properties-file/compare/v5.0.6...v5.0.7) (2026-09-04)
+
 ## [5.0.6](https://github.com/properties-file/properties-file/compare/v5.0.5...v5.0.6) (2026-07-26)
 
 ### Bug Fixes
