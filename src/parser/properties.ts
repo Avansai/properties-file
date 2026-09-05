@@ -20,7 +20,10 @@ const BOM = '\u{FEFF}'
  * preserved in order. Duplicate keys are all retained. The original content
  * can be reconstructed exactly via {@link format}.
  */
-export class Properties {
+export class Properties<
+  T extends KeyValuePairObject = KeyValuePairObject,
+  K extends Exclude<keyof T, number | symbol> = Exclude<keyof T, number | symbol>,
+> {
   /** Whether the content started with a BOM character. */
   readonly hasBom: boolean
   /** The end-of-line character detected from the content. */
@@ -91,7 +94,7 @@ export class Properties {
    *
    * @returns An array of matching {@link PropertyNode} instances (empty if not found).
    */
-  getPropertyNodes(key: string): PropertyNode[] {
+  getPropertyNodes(key: K): PropertyNode[] {
     return this.nodes.filter(
       (node): node is PropertyNode => node.type === 'property' && node.key === key
     )
@@ -104,7 +107,7 @@ export class Properties {
    *
    * @returns The last {@link PropertyNode} with this key, or `undefined`.
    */
-  getEffectiveProperty(key: string): PropertyNode | undefined {
+  getEffectiveProperty(key: K): PropertyNode | undefined {
     for (let index = this.nodes.length - 1; index >= 0; index--) {
       const node = this.nodes[index]
       if (node.type === 'property' && node.key === key) {
@@ -162,7 +165,7 @@ export class Properties {
    *
    * @returns An array of preceding {@link CommentNode} and {@link BlankLineNode} instances.
    */
-  getLeadingNodes(key: string): (CommentNode | BlankLineNode)[] {
+  getLeadingNodes(key: K): (CommentNode | BlankLineNode)[] {
     // Find the last property node with this key.
     let propertyIndex = -1
     for (let index = this.nodes.length - 1; index >= 0; index--) {
