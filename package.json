@@ -152,7 +152,7 @@
     "@swc/core": "1.16.1",
     "@types/bun": "1.4.0",
     "@types/jest": "30.0.0",
-    "@types/node": "26.4.1",
+    "@types/node": "26.5.1",
     "check-node-version": "4.2.1",
     "depcheck": "1.4.7",
     "dotenv-cli": "11.0.0",
